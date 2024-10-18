@@ -17,14 +17,14 @@ main_loop:
     mov ebx, 1      ; stdout
     mov ecx, prompt ; address of prompt
     mov edx, 8      ; length of prompt
-    int 0x80        ; Print on the screen
+    syscall         ; Print on the screen instead of int 0x80
 
     ; Get user input
     mov eax, 3          ; sys_read
     mov ebx, 0          ; stdin
     mov ecx, user_input ; buffer for input
     mov edx, 64         ; max length
-    int 0x80            
+    syscall            
 
     ; Check for `exit`
     mov ecx, user_input
@@ -43,14 +43,14 @@ echo_command:
     mov ebx, 1
     mov ecx, echo_msg
     mov edx, 6
-    int 0x80
+    syscall 
 
     ; Echo the actual text typed by user
     mov eax, 4
     mov ebx, 1
     mov ecx, user_input
     mov edx, 64
-    int 0x80
+    syscall 
     jmp main_loop    
 
 exit_shell:
@@ -59,7 +59,7 @@ exit_shell:
    mov ebx, 1
    mov ecx, exit_msg
    mov edx, 18
-   int 0x80
+   syscall 
    mov eax, 1          ; sys_exit
    xor ebx, ebx        ; status 0
-   int 0x80
+   syscall 
