@@ -1,16 +1,15 @@
 ; I'm using 64-bit registers so no int 0x80 or eax, ebx etc.
-
 section .data
-    default_prompt db 'shelly> ', 0         ; Default prompt
-    exit_msg db 'Exiting Shelly...', 0      ; Exit message
-    echo_msg db 'Echo: ', 0                 ; Echo prefix
+    default_prompt db 0x1B, '[32mshelly> ', 0x1B, '[0m', 0    ; Default prompt in green
+    exit_msg db 'Exiting Shelly...', 10, 0                    ; Exit message with newline
+    prompt_suffix db '> ', 0x1B, '[0m', 0                     ; Suffix to append to the prompt and reset color
 
 section .bss
-    user_input resb 64                      ; Reserve 64 bytes for user input
-    current_prompt resb 64                  ; Reserve space for the current shell prompt
+    user_input resb 64                                        ; Reserve 64 bytes for user input
+    current_prompt resb 64                                    ; Reserve space for the current shell prompt
 
 section .text
-    global _start                           ; Define the program entry point
+    global _start                                             ; Define the program entry point
 
 _start:
     ; Copy default prompt into current_prompt
@@ -18,14 +17,10 @@ _start:
     lea rdi, [current_prompt]
     call copy_prompt
 
-    ; Main loop
 main_loop:
     ; Display the shell prompt
-    mov rax, 1              ; syscall: sys_write
-    mov rdi, 1              ; file descriptor: stdout (1)
     lea rsi, [current_prompt] ; address of the current prompt string
-    mov rdx, 64             ; max length of the prompt
-    syscall                 ; Make the system call
+    call print_string         ; Print current shell prompt
 
     ; Get user input
     mov rax, 0              ; syscall: sys_read
@@ -50,27 +45,30 @@ main_loop:
     jmp main_loop            ; Loop back to prompt for next command
 
 handle_echo:
-    ; Print the 'Echo: ' message
-    mov rax, 1              ; syscall: sys_write
-    mov rdi, 1              ; file descriptor: stdout (1)
-    lea rsi, [echo_msg]     ; address of the echo message
-    mov rdx, 6              ; length of the echo message
-    syscall                 ; Make the system call
-
-    ; Print the user's input (after `echo`)
+    ; Print the user's input (after `echo `)
     mov rax, 1              ; syscall: sys_write
     mov rdi, 1              ; file descriptor: stdout (1)
     lea rsi, [user_input + 5] ; print everything after 'echo '
-    mov rdx, 59             ; print up to 59 characters after 'echo '
-    syscall                 ; Make the system call
+    call print_string        ; Use helper to print string
 
     jmp main_loop           ; Go back to the main loop
 
 handle_shcg:
+    ; Clear the current prompt before updating
+    mov rcx, 64
+    lea rdi, [current_prompt]
+    xor rax, rax
+    rep stosb               ; Clear current prompt
+
     ; Change the prompt based on user input after `shcg `
     lea rsi, [user_input + 5]  ; Pointer to the new prompt (after `shcg `)
     lea rdi, [current_prompt]  ; Pointer to the current prompt variable
-    call copy_prompt           ; Call function to copy the new prompt
+    call copy_prompt           ; Copy the new prompt character by character
+
+    ; Append '>' to the new prompt and reset color
+    lea rsi, [prompt_suffix]   ; Address of the '>' suffix
+    lea rdi, [current_prompt + rdx] ; Append after copied prompt
+    call copy_prompt           ; Copy '>' to the end of the prompt
 
     jmp main_loop              ; Go back to the main loop
 
@@ -84,12 +82,9 @@ handle_exit:
     jmp handle_echo
 
 exit_shell:
-    ; Print the exit message
-    mov rax, 1              ; syscall: sys_write
-    mov rdi, 1              ; file descriptor: stdout (1)
-    lea rsi, [exit_msg]     ; address of the exit message
-    mov rdx, 18             ; length of the exit message
-    syscall                 ; Make the system call
+    ; Print the exit message with a newline
+    lea rsi, [exit_msg]        ; address of the exit message
+    call print_string          ; Use helper to print the exit message
 
     ; Exit the shell
     mov rax, 60             ; syscall: sys_exit (60 in 64-bit)
@@ -108,3 +103,23 @@ copy_loop:
 
 done_copying:
     ret                      ; Return from function
+
+print_string:
+    ; Print string pointed to by rsi
+    mov rax, 1              ; syscall: sys_write
+    mov rdi, 1              ; file descriptor: stdout
+    call strlen             ; Get string length into rdx
+    syscall                 ; Perform the syscall
+    ret
+
+strlen:
+    ; Calculate the length of a string in rsi, store result in rdx
+    xor rdx, rdx             ; Clear the length counter
+strlen_loop:
+    cmp byte [rsi + rdx], 0  ; Check for null terminator
+    je strlen_done           ; If null terminator, end the loop
+    inc rdx                  ; Increment the length
+    jmp strlen_loop          ; Continue loop
+
+strlen_done:
+    ret                      ; Return with length in rdx
